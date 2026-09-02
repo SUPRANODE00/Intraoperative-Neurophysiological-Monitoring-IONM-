@@ -1,0 +1,30 @@
+name: IONM Audit Verification Engine
+
+on:
+push:
+branches: [ "main" ]
+pull_request:
+branches: [ "main" ]
+
+jobs:
+audit-check:
+runs-on: ubuntu-latest
+
+steps:
+  - name: Checkout Repository
+    uses: actions/checkout@v4
+
+  - name: Setup Node.js Environment
+    uses: actions/setup-node@v4
+    with:
+      node-version: '20'
+
+  - name: Verify JSON Payload Syntax
+    run: |
+      node -e "const data = require('./master_batch_audit.json'); console.log('Loaded ' + data.length + ' session records successfully.');"
+
+  - name: Execute Telemetry Summary Processor
+    run: node parse_audit.js
+
+  - name: Execute Session ID Extraction Engine
+    run: node parse_sessions.js
