@@ -20,8 +20,17 @@ BILLED_UNITS=$(grep '"cpt_units_billed"' "$FILE" | sed -E 's/.*"cpt_units_billed
 DELTA_MINS=$(grep '"delta_minutes"' "$FILE" | sed -E 's/.*"delta_minutes": *(-?[0-9]+).*/\1/')
 DSP_WARN=$(grep '"dsp_stability_warning"' "$FILE" | sed -E 's/.*"dsp_stability_warning": *"([^"]+)".*/\1/')
 
-# Calculate absolute delta
+# Fallbacks to prevent integer expression errors on missing keys
+CPT_CODE="${CPT_CODE:-UNKNOWN}"
+DURATION="${DURATION:-0}"
+RECORDED_UNITS="${RECORDED_UNITS:-0}"
+BILLED_UNITS="${BILLED_UNITS:-0}"
+DELTA_MINS="${DELTA_MINS:-0}"
+DSP_WARN="${DSP_WARN:-None}"
+
+# Calculate absolute delta safely
 ABS_DELTA=${DELTA_MINS#-}
+ABS_DELTA=${ABS_DELTA:-0}
 
 echo "==> Parsing audit payload: $FILE..."
 echo "------------------------------------------------"
