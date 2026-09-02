@@ -1,0 +1,35 @@
+[
+  {
+    "session_id": "SESS-BATCH-01",
+    "assigned_cpt": "95940",
+    "billable_units_hours": 1,
+    "duration_minutes": 90.0,
+    "compliance_flags": [
+      "VERIFIED (No Violations)"
+    ],
+    "physician_id": "MD-77034",
+    "zero_ground_offset": 0.0
+  },
+  {
+    "session_id": "SESS-BATCH-02",
+    "assigned_cpt": "95940",
+    "billable_units_hours": 1,
+    "duration_minutes": 90.0,
+    "compliance_flags": [
+      "VERIFIED (No Violations)"
+    ],
+    "physician_id": "MD-77034",
+    "zero_ground_offset": 0.0
+  },
+  {
+    "session_id": "SESS-BATCH-03",
+    "assigned_cpt": "95940",
+    "billable_units_hours": 1,
+    "duration_minutes": 90.0,
+    "compliance_flags": [
+      "VERIFIED (No Violations)"
+    ],
+    "physician_id": "MD-77034",
+    "zero_ground_offset": 0.0
+  }
+]
