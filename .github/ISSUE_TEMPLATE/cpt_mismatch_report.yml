@@ -1,0 +1,67 @@
+name: "CPT Billing Mismatch Report"
+description: "Report discrepancies between recorded IONM telemetry duration, zero-ground stability, and billed CPT codes."
+title: "[AUDIT-MISMATCH]: "
+labels: ["cpt-audit", "discrepancy", "telemetry"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to log CPT billing mismatches identified during batch telemetry audits (e.g., CPT 95940 vs. CPT 95941 attendance duration or DSP stability threshold drops).
+
+  - type: dropdown
+    id: cpt_code
+    attributes:
+      label: "Target CPT Code"
+      description: "Select the primary CPT billing code involved in the mismatch."
+      options:
+        - "95940 (Continuous IONM in-operating room, per 15 min)"
+        - "95941 (Continuous IONM remote, per 15 min)"
+        - "95925 / 95926 (Short-latency somatosensory evoked potential study)"
+        - "95938 (Somatosensory evoked potential study, trunk/limbs)"
+        - "Other / Multiple CPT Codes"
+    validations:
+      required: true
+
+  - type: input
+    id: batch_file
+    attributes:
+      label: "Batch Payload / Session ID"
+      description: "Specify the batch JSON file or session ID where the mismatch occurred (e.g., audit_batch_02.json or SESSION-2026-X9)."
+      placeholder: "audit_batch_02.json"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_vs_actual
+    attributes:
+      label: "Expected vs. Billed Summary"
+      description: "Describe the calculated attendance duration/units vs. what was billed or processed."
+      placeholder: |
+        - Telemetry Duration Recorded: 45 minutes (3 units)
+        - CPT Units Billed: 4 units (60 minutes)
+        - Delta: +15 minutes unverified
+    validations:
+      required: true
+
+  - type: textarea
+    id: dsp_telemetry_logs
+    attributes:
+      label: "DSP & Zero-Ground Signal Logs"
+      description: "Paste any relevant signal dropouts, noise thresholds, or pytest failure traces."
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: verification_checks
+    attributes:
+      label: "Audit Pre-Verification"
+      options:
+        - label: "Confirmed session time-stamps against raw telemetry logs."
+          required: true
+        - label: "Ran local `pytest -v test_main.py` and confirmed test suite execution."
+          required: true
+        - label: "JSON payload structure validated via `parse_audit.js` or Python loader."
+          required: true
