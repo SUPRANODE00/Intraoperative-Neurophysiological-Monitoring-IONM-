@@ -28,3 +28,28 @@ steps:
 
   - name: Execute Session ID Extraction Engine
     run: node parse_sessions.js
+
+  - name: Enforce Strict Compliance Assertions
+    run: |
+      node -e '
+        const records = require("./master_batch_audit.json");
+        const VALID_CPT_CODES = new Set(["95940", "95941", "G0453"]);
+        let errors = [];
+
+        records.forEach((record, index) => {
+          if (record.zero_ground_offset !== 0) {
+            errors.push(`Record ${index} (${record.session_id || "UNKNOWN"}): Non-zero ground offset detected (${record.zero_ground_offset}).`);
+          }
+          if (!record.assigned_cpt || !VALID_CPT_CODES.has(String(record.assigned_cpt))) {
+            errors.push(`Record ${index} (${record.session_id || "UNKNOWN"}): Invalid or missing CPT code (${record.assigned_cpt}).`);
+          }
+        });
+
+        if (errors.length > 0) {
+          console.error("❌ COMPLIANCE CHECK FAILED:");
+          errors.forEach(err => console.error("   - " + err));
+          process.exit(1);
+        } else {
+          console.log("✅ All records passed strict zero-ground offset (0.0) and valid CPT assertions.");
+        }
+      '
