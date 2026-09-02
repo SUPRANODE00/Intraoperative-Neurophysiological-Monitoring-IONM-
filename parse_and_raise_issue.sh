@@ -4,17 +4,18 @@ set -euo pipefail
 
 REPO="${GITHUB_REPOSITORY:-SUPRANODE00/Intraoperative-Neurophysiological-Monitoring-IONM-}"
 JSON_FILE="${1:-audit_batch_02.json}"
+THRESHOLD_MINS="${THRESHOLD_MINS:-15}"
 
 if [[ ! -f "$JSON_FILE" ]]; then
   echo "Error: File '$JSON_FILE' not found." >&2
   exit 1
 fi
 
-echo "==> Parsing audit payload using cat, sed, and awk..."
+echo "==> Parsing audit payload: $JSON_FILE..."
 
 extract_field() {
   local key="$1"
-  cat "$JSON_FILE" | awk -v key="$key" '
+  awk -v key="$key" '
     BEGIN { FS=":"; val="" }
     $0 ~ "\"" key "\"" {
       val = $0
@@ -23,7 +24,7 @@ extract_field() {
       print val
       exit
     }
-  '
+  ' "$JSON_FILE"
 }
 
 CPT_CODE=$(extract_field "cpt_code")
@@ -34,53 +35,96 @@ UNITS_BILLED=$(extract_field "billed_units")
 DELTA_MINS=$(extract_field "delta_minutes")
 DSP_WARN=$(extract_field "dsp_warning")
 
-CPT_CODE=$(echo "${CPT_CODE:-N/A}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-SESSION_ID=$(echo "${SESSION_ID:-N/A}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-DURATION_REC=$(echo "${DURATION_REC:-N/A}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-UNITS_REC=$(echo "${UNITS_REC:-N/A}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-UNITS_BILLED=$(echo "${UNITS_BILLED:-N/A}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-DELTA_MINS=$(echo "${DELTA_MINS:-N/A}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-DSP_WARN=$(echo "${DSP_WARN:-None}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+DELTA_MINS="${DELTA_MINS:-0}"
+UNITS_REC="${UNITS_REC:-0}"
+UNITS_BILLED="${UNITS_BILLED:-0}"
 
-FILE_NAME=$(echo "$JSON_FILE" | sed 's|.*/||')
-TITLE="[AUDIT-MISMATCH]: CPT ${CPT_CODE} Duration Delta in ${FILE_NAME}"
+ABS_DELTA=$(awk -v d="$DELTA_MINS" 'BEGIN { print (d < 0 ? -d : d) }')
 
-BODY=$(cat <<EOFBODY
-### Target CPT Code
-${CPT_CODE} (Continuous IONM)
+echo "------------------------------------------------"
+echo "CPT Code:        $CPT_CODE"
+echo "Session ID:      $SESSION_ID"
+echo "Duration (Min):  $DURATION_REC"
+echo "Recorded Units:  $UNITS_REC"
+echo "Billed Units:    $UNITS_BILLED"
+echo "Delta Minutes:   $DELTA_MINS (Abs: $ABS_DELTA, Threshold: $THRESHOLD_MINS)"
+echo "DSP Warning:     ${DSP_WARN:-None}"
+echo "------------------------------------------------"
 
-### Batch Payload / Session ID
-\`${SESSION_ID}\` (${JSON_FILE})
+HAS_UNIT_DISCREPANCY=0
+if [[ "$UNITS_REC" != "$UNITS_BILLED" ]]; then
+  HAS_UNIT_DISCREPANCY=1
+fi
 
-### Expected vs. Billed Summary
-- **Telemetry Duration Recorded:** ${DURATION_REC} minutes (${UNITS_REC} units)
-- **CPT Units Billed:** ${UNITS_BILLED} units
-- **Delta:** +${DELTA_MINS} minutes unverified
+if [[ "$ABS_DELTA" -lt "$THRESHOLD_MINS" ]] && [[ "$HAS_UNIT_DISCREPANCY" -eq 0 ]]; then
+  echo "==> Audit Passed: Delta ($ABS_DELTA mins) is within tolerance (< $THRESHOLD_MINS mins) and units match."
+  exit 0
+fi
 
-### DSP & Zero-Ground Signal Logs
-\`\`\`
-${DSP_WARN}
-\`\`\`
+echo "==> Audit Discrepancy Detected! Delta exceeds threshold or unit mismatch found. Processing issue..."
 
-### Audit Pre-Verification
-- [x] Confirmed session time-stamps against raw telemetry logs.
-- [x] Processed automatically via local shell audit script.
-- [x] JSON payload structure validated via native shell parser.
-EOFBODY
+REQUIRED_LABELS=("cpt-audit" "discrepancy" "telemetry")
+REQUIRED_COLORS=("0E8A16" "B60205" "1D76DB")
+REQUIRED_DESCS=("CPT Telemetry Automated Audits" "Billing or Telemetry Discrepancy" "IONM Telemetry Stream Alert")
+
+ensure_labels_exist() {
+  echo "==> Verifying repository labels on $REPO..."
+  EXISTING_LABELS=$(gh api "repos/$REPO/labels" --paginate --jq '.[].name' 2>/dev/null || true)
+
+  for i in "${!REQUIRED_LABELS[@]}"; do
+    LABEL="${REQUIRED_LABELS[$i]}"
+    COLOR="${REQUIRED_COLORS[$i]}"
+    DESC="${REQUIRED_DESCS[$i]}"
+
+    if echo "$EXISTING_LABELS" | grep -qx "$LABEL"; then
+      echo "  [✓] Label '$LABEL' exists."
+    else
+      echo "  [+] Creating missing label '$LABEL'..."
+      gh api --method POST "repos/$REPO/labels" \
+        -f name="$LABEL" \
+        -f color="$COLOR" \
+        -f description="$DESC" >/dev/null
+    fi
+  done
+}
+
+ensure_labels_exist
+
+ISSUE_TITLE="[Audit Alert] Discrepancy in CPT $CPT_CODE (Session: $SESSION_ID)"
+
+ISSUE_BODY=$(cat <<EOT
+## 🚨 CPT Telemetry Audit Discrepancy Alert
+
+A telemetry disparity was detected during automated payload verification.
+
+### Metric Details
+* **CPT Code:** \`$CPT_CODE\`
+* **Session ID:** \`$SESSION_ID\`
+* **Telemetry Duration:** \`$DURATION_REC\` minutes
+* **Delta Minutes:** \`$DELTA_MINS\` *(Threshold: ${THRESHOLD_MINS}m)*
+* **Recorded Units:** \`$UNITS_REC\`
+* **Billed Units:** \`$UNITS_BILLED\`
+* **DSP Warning:** \`${DSP_WARN:-None}\`
+
+### Audit Findings
+$(if [[ "$ABS_DELTA" -ge "$THRESHOLD_MINS" ]]; then echo "* ⚠️ **Duration Variance Exceeded:** Delta of \`${DELTA_MINS}m\` exceeds allowable threshold of \`${THRESHOLD_MINS}m\`."; fi)
+$(if [[ "$HAS_UNIT_DISCREPANCY" -eq 1 ]]; then echo "* ⚠️ **Unit Mismatch:** Recorded units (\`${UNITS_REC}\`) do not match billed units (\`${UNITS_BILLED}\`)."; fi)
+
+---
+*Generated automatically by POSIX Telemetry Audit Pipeline.*
+EOT
 )
 
-echo "==> Verifying repository labels on ${REPO}..."
-LABELS=("cpt-audit" "discrepancy" "telemetry")
-for LABEL in "${LABELS[@]}"; do
-  if ! gh label list --repo "$REPO" | grep -q "$LABEL"; then
-    echo "Creating missing label: $LABEL"
-    gh label create "$LABEL" --color "d93f0b" --repo "$REPO" || true
-  fi
+LABEL_ARGS=""
+for L in "${REQUIRED_LABELS[@]}"; do
+  LABEL_ARGS="$LABEL_ARGS --label $L"
 done
 
 echo "==> Submitting GitHub Issue..."
 gh issue create \
   --repo "$REPO" \
-  --title "$TITLE" \
-  --body "$BODY" \
-  --label "cpt-audit,discrepancy,telemetry"
+  --title "$ISSUE_TITLE" \
+  --body "$ISSUE_BODY" \
+  $LABEL_ARGS
+
+echo "==> Success! Issue raised successfully."
