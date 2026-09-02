@@ -1,84 +1,43 @@
-.github/workflows/cpt-audit.yml          LABELS=("cpt-audit" "discrepancy" "telemetry")
-          for LABEL in "${LABELS[@]}"; do
-            if ! gh label list --repo "$REPO" | grep -q "$LABEL"; then
-              echo "Creating missing label: $LABEL"
-              gh label create "$LABEL" --color "d93f0b" --repo "$REPO" || true
+name: CPT Audit Telemetry Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'audit_batch_*.json'
+      - 'parse_and_raise_issue.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit-telemetry:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Make Script Executable
+        run: chmod +x parse_and_raise_issue.sh
+
+      - name: Run Telemetry Audit Across Batch Files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          THRESHOLD_MINS: 15
+        run: |
+          echo "==> Scanning for audit payload files..."
+          FOUND=0
+          for file in audit_batch_*.json; do
+            if [ -f "$file" ]; then
+              echo "==> Executing audit pipeline for: $file"
+              ./parse_and_raise_issue.sh "$file"
+              FOUND=1
             fi
           done
-
-          # 3. Iterate through changed JSON files and parse via POSIX text utilities
-          for FILE in $CHANGED_FILES; do
-            if [ -f "$FILE" ]; then
-              echo "Processing $FILE via cat, sed, and awk..."
-
-              # POSIX Awk helper function to extract raw values by key without jq
-              parse_json_key() {
-                KEY="$1"
-                FILE_TARGET="$2"
-                cat "$FILE_TARGET" | awk -v key="$KEY" '
-                  BEGIN { FS=":"; val="" }
-                  $0 ~ "\"" key "\"" {
-                    # Extract the right side of the key-value pair
-                    val = $0
-                    sub(/^[^:]*:/, "", val)
-                    # Strip leading/trailing whitespaces, commas, and quotes
-                    gsub(/^[ \t\r\n"]+|[ \t\r\n",]+$/, "", val)
-                    print val
-                    exit
-                  }
-                '
-              }
-
-              CPT_CODE=$(parse_json_key "cpt_code" "$FILE")
-              SESSION_ID=$(parse_json_key "session_id" "$FILE")
-              DURATION_REC=$(parse_json_key "telemetry_duration_minutes" "$FILE")
-              UNITS_REC=$(parse_json_key "recorded_units" "$FILE")
-              UNITS_BILLED=$(parse_json_key "billed_units" "$FILE")
-              DELTA_MINS=$(parse_json_key "delta_minutes" "$FILE")
-              DSP_WARN=$(parse_json_key "dsp_warning" "$FILE")
-
-              # Fallback defaults via sed normalization
-              CPT_CODE=$(echo "${CPT_CODE:-N/A}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-              SESSION_ID=$(echo "${SESSION_ID:-N/A}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-              DURATION_REC=$(echo "${DURATION_REC:-N/A}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-              UNITS_REC=$(echo "${UNITS_REC:-N/A}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-              UNITS_BILLED=$(echo "${UNITS_BILLED:-N/A}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-              DELTA_MINS=$(echo "${DELTA_MINS:-N/A}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-              DSP_WARN=$(echo "${DSP_WARN:-None}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-
-              FILE_NAME=$(echo "$FILE" | sed 's|.*/||')
-              TITLE="[AUDIT-MISMATCH]: CPT ${CPT_CODE} Duration Delta in ${FILE_NAME}"
-
-              # Assemble issue body stream via cat heredoc
-              BODY=$(cat <<EOF
-### Target CPT Code
-${CPT_CODE} (Continuous IONM)
-
-### Batch Payload / Session ID
-\`${SESSION_ID}\` (${FILE})
-
-### Expected vs. Billed Summary
-- **Telemetry Duration Recorded:** ${DURATION_REC} minutes (${UNITS_REC} units)
-- **CPT Units Billed:** ${UNITS_BILLED} units
-- **Delta:** +${DELTA_MINS} minutes unverified
-
-### DSP & Zero-Ground Signal Logs
-\`\`\`
-${DSP_WARN}
-\`\`\`
-
-### Audit Pre-Verification
-- [x] Confirmed session time-stamps against raw telemetry logs.
-- [x] Processed automatically via GitHub Actions CI pipeline.
-- [x] JSON payload structure validated via native shell parser.
-EOF
-              )
-
-              # Dispatch payload to GitHub API via gh CLI
-              gh issue create \
-                --repo "$REPO" \
-                --title "$TITLE" \
-                --body "$BODY" \
-                --label "cpt-audit,discrepancy,telemetry"
-            fi
-          done
+          
+          if [ "$FOUND" -eq 0 ]; then
+            echo "==> No audit_batch_*.json files found."
+          fi
