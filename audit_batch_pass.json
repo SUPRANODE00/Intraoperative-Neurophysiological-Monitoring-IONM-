@@ -1,0 +1,8 @@
+{
+  "cpt_code": "95940",
+  "duration_minutes": 60,
+  "recorded_units": 4,
+  "cpt_units_billed": 4,
+  "delta_minutes": 2,
+  "dsp_stability_warning": "DSP_STABILITY_OK: Frame stability maintained within nominal parameters."
+}

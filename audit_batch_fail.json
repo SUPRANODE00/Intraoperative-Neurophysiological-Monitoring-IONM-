@@ -1,0 +1,8 @@
+{
+  "cpt_code": "95940",
+  "duration_minutes": 45,
+  "recorded_units": 3,
+  "cpt_units_billed": 4,
+  "delta_minutes": 15,
+  "dsp_stability_warning": "DSP_STABILITY_WARN: Frame 1042-1088 drop below 0.95 threshold."
+}
