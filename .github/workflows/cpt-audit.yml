@@ -1,40 +1,4 @@
-name: CPT Telemetry Audit Pipeline
-
-on:
-  push:
-    paths:
-      - 'audits/*.json'          # Triggers when JSON files in audits/ change
-      - 'audit_batch_*.json'     # Triggers on root batch files like audit_batch_02.json
-  workflow_dispatch:              # Manual execution bridge
-
-jobs:
-  audit-and-issue:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write               # Required permission to issue commands via gh CLI
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2          # Fetches HEAD~1 and HEAD for diff processing
-
-      - name: Process Audit JSON Files
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-        run: |
-          # 1. Identify added or modified JSON audit files from the last commit
-          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD | grep -E '^(audits/|audit_batch_).*\.json$' || true)
-
-          if [ -z "$CHANGED_FILES" ]; then
-            echo "No new or modified audit JSON files detected in this push."
-            exit 0
-          fi
-
-          # 2. Ensure required labels exist on the repo
-          LABELS=("cpt-audit" "discrepancy" "telemetry")
+.github/workflows/cpt-audit.yml          LABELS=("cpt-audit" "discrepancy" "telemetry")
           for LABEL in "${LABELS[@]}"; do
             if ! gh label list --repo "$REPO" | grep -q "$LABEL"; then
               echo "Creating missing label: $LABEL"
